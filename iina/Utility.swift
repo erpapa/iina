@@ -10,9 +10,6 @@ import Cocoa
 
 class Utility {
 
-  static let tabTitleFontAttributes = FontAttributes(font: .system, size: .system, align: .center).value
-  static let tabTitleActiveFontAttributes = FontAttributes(font: .systemBold, size: .system, align: .center).value
-
   static let supportedFileExt: [MPVTrack.TrackType: [String]] = [
     .video: ["mkv", "mp4", "avi", "m4v", "mov", "3gp", "ts", "mts", "m2ts", "wmv", "flv", "f4v", "asf", "webm", "rm", "rmvb", "qt", "dv", "mpg", "mpeg", "mxf", "vob", "gif"],
     .audio: ["mp3", "aac", "mka", "dts", "flac", "ogg", "oga", "mogg", "m4a", "ac3", "opus", "wav", "wv", "aiff", "ape", "tta", "tak"],
@@ -27,13 +24,6 @@ class Utility {
 
   // MARK: - Logs, alerts
 
-  enum AlertMode {
-    case modal
-    case nonModal
-    case sheet
-    case sheetModal
-  }
-
   @available(*, deprecated, message: "showAlert(message:alertStyle:) is deprecated, use showAlert(_ key:comment:arguments:alertStyle:) instead")
   static func showAlert(message: String, alertStyle: NSAlert.Style = .critical) {
     let alert = NSAlert()
@@ -44,13 +34,15 @@ class Utility {
       alert.messageText = NSLocalizedString("alert.title_info", comment: "Information")
     case .warning:
       alert.messageText = NSLocalizedString("alert.title_warning", comment: "Warning")
+    @unknown default:
+      assertionFailure("Unknown \(type(of: alertStyle)) \(alertStyle)")
     }
     alert.informativeText = message
     alert.alertStyle = alertStyle
     alert.runModal()
   }
-  
-  static func showAlert(_ key: String, comment: String? = nil, arguments: [CVarArg]? = nil, style: NSAlert.Style = .critical) {
+
+  static func showAlert(_ key: String, comment: String? = nil, arguments: [CVarArg]? = nil, style: NSAlert.Style = .critical, sheetWindow: NSWindow? = nil) {
     let alert = NSAlert()
     switch style {
     case .critical:
@@ -59,36 +51,45 @@ class Utility {
       alert.messageText = NSLocalizedString("alert.title_info", comment: "Information")
     case .warning:
       alert.messageText = NSLocalizedString("alert.title_warning", comment: "Warning")
+    @unknown default:
+      assertionFailure("Unknown \(type(of: style)) \(style)")
     }
-    
+
     var format: String
     if let stringComment = comment {
       format = NSLocalizedString("alert." + key, comment: stringComment)
     } else {
       format = NSLocalizedString("alert." + key, comment: key)
     }
-    
+
     if let stringArguments = arguments {
       alert.informativeText = String(format: format, arguments: stringArguments)
     } else {
       alert.informativeText = String(format: format)
     }
-    
+
     alert.alertStyle = style
-    alert.runModal()
+    if let sheetWindow = sheetWindow {
+      alert.beginSheetModal(for: sheetWindow)
+    } else {
+      alert.runModal()
+    }
   }
 
   // MARK: - Panels, Alerts
 
-  /** 
+  /**
    Pop up an ask panel.
-   - parameters:
+   - Parameters:
      - key: A localization key. "alert.`key`.title" will be used as alert title, and "alert.`key`.message" will be the informative text.
      - titleComment: (Optional) Comment for title key.
      - messageComment: (Optional) Comment for message key.
-   - Returns: Whether user dismissed the panel by clicking OK.
+     - sheetWindow: (Optional) The window on which to display the sheet; if this value is nil then run modal.
+     - callback: (Optional) Completion handler used by sheet modal.
+   - Returns: Whether user dismissed the panel by clicking OK, discardable when using sheet.
    */
-  static func quickAskPanel(_ key: String, titleComment: String? = nil, messageComment: String? = nil, useSheet: Bool = false, sheetCallback: ((Bool) -> Void)? = nil) -> Bool {
+  @discardableResult
+  static func quickAskPanel(_ key: String, titleComment: String? = nil, messageComment: String? = nil, sheetWindow: NSWindow? = nil, callback: ((NSApplication.ModalResponse) -> Void)? = nil) -> Bool {
     let panel = NSAlert()
     let titleKey = "alert." + key + ".title"
     let messageKey = "alert." + key + ".message"
@@ -96,12 +97,9 @@ class Utility {
     panel.informativeText = NSLocalizedString(messageKey, comment: messageComment ?? messageKey)
     panel.addButton(withTitle: NSLocalizedString("general.ok", comment: "OK"))
     panel.addButton(withTitle: NSLocalizedString("general.cancel", comment: "Cancel"))
-    if useSheet {
-      panel.beginSheetModal(for: NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows[0]) { response in
-        if let sheetCallback = sheetCallback {
-          sheetCallback(response == .alertFirstButtonReturn)
-        }
-      }
+
+    if let sheetWindow = sheetWindow {
+      panel.beginSheetModal(for: sheetWindow, completionHandler: callback)
       return false
     } else {
       return panel.runModal() == .alertFirstButtonReturn
@@ -110,32 +108,47 @@ class Utility {
 
   /**
    Pop up an open panel.
-   - Returns: Whether user dismissed the panel by clicking OK.
+   - Parameters:
+     - title: Title of the panel.
+     - chooseDir: Chooses directories or not; if false, then only choose files.
+     - dir: (Optional) Base directory.
+     - sheetWindow: (Optional) The window on which to display the sheet.
+     - callback: (Optional) Completion handler.
    */
-  static func quickOpenPanel(title: String, isDir: Bool, dir: URL? = nil, ok: @escaping (URL) -> Void) {
+  static func quickOpenPanel(title: String, chooseDir: Bool, dir: URL? = nil, sheetWindow: NSWindow? = nil, allowedFileTypes: [String]? = nil, callback: @escaping (URL) -> Void) {
     let panel = NSOpenPanel()
     panel.title = title
     panel.canCreateDirectories = false
-    panel.canChooseFiles = !isDir
-    panel.canChooseDirectories = isDir
+    panel.canChooseFiles = !chooseDir
+    panel.canChooseDirectories = chooseDir
     panel.resolvesAliases = true
+    panel.allowedFileTypes = allowedFileTypes
     panel.allowsMultipleSelection = false
     panel.level = .modalPanel
     if let dir = dir {
       panel.directoryURL = dir
     }
-    panel.begin() { result in
+    let handler: (NSApplication.ModalResponse) -> Void = { result in
       if result == .OK, let url = panel.url {
-        ok(url)
+        callback(url)
       }
+    }
+    if let sheetWindow = sheetWindow {
+      panel.beginSheetModal(for: sheetWindow, completionHandler: handler)
+    } else {
+      panel.begin(completionHandler: handler)
     }
   }
 
   /**
    Pop up an open panel.
-   - Returns: Whether user dismissed the panel by clicking OK.
+   - Parameters
+     - title: Title of the panel.
+     - dir: (Optional) Base directory.
+     - sheetWindow: (Optional) The window on which to display the sheet.
+     - callback: (Optional) Completion handler.
    */
-  static func quickMultipleOpenPanel(title: String, dir: URL? = nil, canChooseDir: Bool, ok: @escaping ([URL]) -> Void) {
+  static func quickMultipleOpenPanel(title: String, dir: URL? = nil, canChooseDir: Bool, callback: @escaping ([URL]) -> Void) {
     let panel = NSOpenPanel()
     panel.title = title
     panel.canCreateDirectories = false
@@ -148,40 +161,28 @@ class Utility {
     }
     panel.begin() { result in
       if result == .OK {
-        ok(panel.urls)
+        callback(panel.urls)
       }
     }
   }
 
   /**
    Pop up a save panel.
-   - Returns: Whether user dismissed the panel by clicking OK.
    */
-  static func quickSavePanel(title: String, types: [String],
-                             mode: AlertMode = .nonModal, sheetWindow: NSWindow? = nil,
-                             ok: @escaping (URL) -> Void) {
+  static func quickSavePanel(title: String, types: [String], sheetWindow: NSWindow? = nil, callback: @escaping (URL) -> Void) {
     let panel = NSSavePanel()
     panel.title = title
     panel.canCreateDirectories = true
     panel.allowedFileTypes = types
     let handler: (NSApplication.ModalResponse) -> Void = { result in
       if result == .OK, let url = panel.url {
-        ok(url)
+        callback(url)
       }
     }
-    switch mode {
-    case .modal:
-      let response = panel.runModal()
-      handler(response)
-    case .nonModal:
-      panel.begin(completionHandler: handler)
-    case .sheet:
-      guard let sheetWindow = sheetWindow else {
-        Logger.fatal("No sheet window")
-      }
+    if let sheetWindow = sheetWindow {
       panel.beginSheet(sheetWindow, completionHandler: handler)
-    default:
-      Logger.log("quickSavePanel: Unsupported mode", level: .error)
+    } else {
+      panel.begin(completionHandler: handler)
     }
   }
 
@@ -191,14 +192,12 @@ class Utility {
      - key: A localization key. "alert.`key`.title" will be used as alert title, and "alert.`key`.message" will be the informative text.
      - titleComment: (Optional) Comment for title key.
      - messageComment: (Optional) Comment for message key.
-     - mode: A `AlertMode`, `.modal` (default) or `.sheetModal`.
-     - sheetWindow: Must present if mode is `.sheetModal`.
+     - sheetWindow: (Optional) The window on which to display the sheet.
+     - callback: (Optional) Completion handler.
    - Returns: Whether user dismissed the panel by clicking OK. Only works when using `.modal` mode.
    */
-  @discardableResult static func quickPromptPanel(_ key: String,
-                                                  titleComment: String? = nil, messageComment: String? = nil,
-                                                  mode: AlertMode = .modal, sheetWindow: NSWindow? = nil,
-                                                  ok: @escaping (String) -> Void) -> Bool {
+  @discardableResult
+  static func quickPromptPanel(_ key: String, titleComment: String? = nil, messageComment: String? = nil, sheetWindow: NSWindow? = nil, callback: @escaping (String) -> Void) -> Bool {
     let panel = NSAlert()
     let titleKey = "alert." + key + ".title"
     let messageKey = "alert." + key + ".message"
@@ -212,30 +211,20 @@ class Utility {
     panel.addButton(withTitle: NSLocalizedString("general.ok", comment: "OK"))
     panel.addButton(withTitle: NSLocalizedString("general.cancel", comment: "Cancel"))
     panel.window.initialFirstResponder = input
-    // handler
-    switch mode {
-    case .modal:
-      let response = panel.runModal()
-      if response == .alertFirstButtonReturn {
-        ok(input.stringValue)
-        return true
-      } else {
-        return false
-      }
-    case .sheetModal:
-      guard let sheetWindow = sheetWindow else {
-        Logger.fatal("No sheet window")
-      }
+
+    if let sheetWindow = sheetWindow {
       panel.beginSheetModal(for: sheetWindow) { response in
         if response == .alertFirstButtonReturn {
-          ok(input.stringValue)
+          callback(input.stringValue)
         }
       }
-      return false
-    default:
-      Logger.log("quickPromptPanel: Unsupported mode", level: .error)
-      return false
+    } else {
+      if panel.runModal() == .alertFirstButtonReturn {
+        callback(input.stringValue)
+        return true
+      }
     }
+    return false
   }
 
   /**
@@ -246,7 +235,7 @@ class Utility {
      - messageComment: (Optional) Comment for message key.
    - Returns: Whether user dismissed the panel by clicking OK.
    */
-  static func quickUsernamePasswordPanel(_ key: String, titleComment: String? = nil, messageComment: String? = nil, ok: (String, String) -> Void) -> Bool {
+  static func quickUsernamePasswordPanel(_ key: String, titleComment: String? = nil, messageComment: String? = nil, sheetWindow: NSWindow? = nil, callback: @escaping (String, String) -> Void) {
     let quickLabel: (String, Int) -> NSTextField = { title, yPos in
       let label = NSTextField(frame: NSRect(x: 0, y: yPos, width: 240, height: 14))
       label.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
@@ -277,23 +266,28 @@ class Utility {
     panel.addButton(withTitle: NSLocalizedString("general.ok", comment: "OK"))
     panel.addButton(withTitle: NSLocalizedString("general.cancel", comment: "Cancel"))
     panel.window.initialFirstResponder = input
-    let response = panel.runModal()
-    if response == .alertFirstButtonReturn {
-      ok(input.stringValue, pwField.stringValue)
-      return true
+    if let sheetWindow = sheetWindow {
+      panel.beginSheetModal(for: sheetWindow) { response in
+        if response == .alertFirstButtonReturn {
+          callback(input.stringValue, pwField.stringValue)
+        }
+      }
     } else {
-      return false
+      let response = panel.runModal()
+      if response == .alertFirstButtonReturn {
+        callback(input.stringValue, pwField.stringValue)
+      }
     }
   }
 
   /**
    Pop up a font picker panel.
    - parameters:
-     - ok: A closure accepting the font name.
+     - callback: A closure accepting the font name.
    */
-  static func quickFontPickerWindow(ok: @escaping (String?) -> Void) {
+  static func quickFontPickerWindow(callback: @escaping (String?) -> Void) {
     guard let appDelegate = NSApp.delegate as? AppDelegate else { return }
-    appDelegate.fontPicker.finishedPicking = ok
+    appDelegate.fontPicker.finishedPicking = callback
     appDelegate.fontPicker.showWindow(self)
   }
 
@@ -325,7 +319,7 @@ class Utility {
   }
 
   static func getFilePath(Configs userConfigs: [String: Any]!, forConfig conf: String, showAlert: Bool = true) -> String? {
-    
+
     // if is default config
     if let dv = PrefKeyBindingViewController.defaultConfigs[conf] {
       return dv
@@ -338,7 +332,7 @@ class Utility {
       return nil
     }
   }
-  
+
   static let appSupportDirUrl: URL = {
     // get path
     let asPath = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
@@ -394,6 +388,11 @@ class Utility {
 
   // MARK: - Util functions
 
+  static func setBoldTitle(for button: NSButton, _ active: Bool) {
+    button.attributedTitle = NSAttributedString(string: button.title,
+                                                attributes: FontAttributes(font: active ? .systemBold : .system, size: .system, align: .center).value)
+  }
+
   static func toRealSubScale(fromDisplaySubScale scale: Double) -> Double {
     return scale > 0 ? scale : -1 / scale
   }
@@ -432,6 +431,20 @@ class Utility {
     }
   }
 
+  @available(macOS, deprecated: 10.14, message: "Use the system appearance-based APIs instead.")
+  static func getAppearanceAndMaterial(from theme: Preference.Theme) -> (NSAppearance?, NSVisualEffectView.Material) {
+    switch theme {
+    case .ultraDark:
+      return (NSAppearance(named: .vibrantDark), .ultraDark)
+    case .light:
+      return (NSAppearance(named: .vibrantLight), .light)
+    case .mediumLight:
+      return (NSAppearance(named: .vibrantLight), .mediumLight)
+    default:
+      return (NSAppearance(named: .vibrantDark), .dark)
+    }
+  }
+
   // MARK: - Util classes
 
   class FontAttributes {
@@ -464,7 +477,7 @@ class Utility {
       self.align = align
     }
 
-    var value : [NSAttributedStringKey : Any]? {
+    var value : [NSAttributedString.Key : Any]? {
       get {
         let f: NSFont?
         let s: CGFloat

@@ -8,6 +8,16 @@
 
 import Cocoa
 
+// See https://github.com/mpv-player/mpv/blob/master/options/m_option.c#L2955
+// #define NAMECH "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+fileprivate let mpvAllowedCharacters = Set<Character>("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
+
+fileprivate extension String {
+  var mpvQuotedFilterValue: String {
+    return self.allSatisfy({ mpvAllowedCharacters.contains($0) }) ? self : mpvFixedLengthQuoted
+  }
+}
+
 /**
  Represents a mpv filter. It can be either created by user or loaded from mpv.
  */
@@ -39,7 +49,7 @@ class MPVFilter: NSObject {
     return MPVFilter(name: "mirror", label: nil, params: nil)
   }
 
-  /** 
+  /**
    A ffmpeg `unsharp` filter.
    Args: l(uma)x, ly, la, c(hroma)x, xy, ca; default 5:5:0:5:5:0.
    We only change la and ca here.
@@ -85,7 +95,7 @@ class MPVFilter: NSObject {
           if name == "lavfi" {
             str += "[\(params!["graph"]!)]"
           } else {
-            str += params!.map({ (k, v) -> String in return "\(k)=\(v)" }).joined(separator: ":")
+            str += params!.map { "\($0)=\($1.mpvQuotedFilterValue)" } .joined(separator: ":")
           }
         }
       }
@@ -99,7 +109,19 @@ class MPVFilter: NSObject {
     self.type = FilterType(rawValue: name)
     self.name = name
     self.label = label
-    self.params = params
+    if let params = params, let type = type, let format = MPVFilter.formats[type]?.components(separatedBy: ":") {
+      var translated: [String: String] = [:]
+      for (key, value) in params {
+        if let number = Int(key.dropFirst()) {
+          translated[format[number]] = value
+        } else {
+          translated[key] = value
+        }
+      }
+      self.params = translated
+    } else {
+      self.params = params
+    }
   }
 
   init?(rawString: String) {

@@ -12,6 +12,12 @@
 /* Class = "NSTextFieldCell"; title = "The button below will delete all cached thumbnails."; ObjectID = "Bag-TV-Stp"; */
 "Bag-TV-Stp.title" = "De onderstaande knop wist de miniatuur cache.";
 
+/* Class = "NSTextFieldCell"; title = "Cleared."; ObjectID = "Efe-8C-4eV"; */
+"Efe-8C-4eV.title" = "Gewist.";
+
+/* Class = "NSTextFieldCell"; title = "Cleared."; ObjectID = "Fb4-dy-CXX"; */
+"Fb4-dy-CXX.title" = "Gewist.";
+
 /* Class = "NSTextFieldCell"; title = "Open links or current webpage in IINA with one click. The website must be supported by youtube-dl."; ObjectID = "GAo-fx-NG0"; */
 "GAo-fx-NG0.title" = "Open links of de huidige webpagina in IINA met één klik. De website moet hiervoor ondersteund worden door youtube-dl.";
 
@@ -47,9 +53,6 @@
 
 /* Class = "NSButtonCell"; title = "Cancel"; ObjectID = "kbP-VI-dmT"; */
 "kbP-VI-dmT.title" = "Annuleer";
-
-/* Class = "NSButtonCell"; title = "Safari"; ObjectID = "oac-PR-9Yh"; */
-"oac-PR-9Yh.title" = "Safari";
 
 /* Class = "NSTextFieldCell"; title = "The button below will delete all files in the "watch later" folder. These files contain all saved playback progress and settings applied during playback."; ObjectID = "pPC-q2-9Gh"; */
 "pPC-q2-9Gh.title" = "De onderstaande knop wist de bestanden in de \"bekijk later\" map. Deze bestanden bevatten de opgeslagen afspeelvoortgang.";

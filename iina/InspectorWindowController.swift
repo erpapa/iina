@@ -69,13 +69,16 @@ class InspectorWindowController: NSWindowController, NSTableViewDelegate, NSTabl
 
   override func windowDidLoad() {
     super.windowDidLoad()
-    window?.appearance = NSAppearance(named: .vibrantDark)
 
     watchProperties = Preference.array(for: .watchProperties) as! [String]
     watchTableView.delegate = self
     watchTableView.dataSource = self
 
     deleteButton.isEnabled = false
+
+    if #available(macOS 10.14, *) {} else {
+      window?.appearance = NSAppearance(named: .vibrantDark)
+    }
 
     updateInfo()
 
@@ -136,7 +139,7 @@ class InspectorWindowController: NSWindowController, NSTableViewDelegate, NSTabl
         self.vsizeField.stringValue = "\(vwidth)\u{d7}\(vheight)"
 
         let fileSize = controller.getInt(MPVProperty.fileSize)
-        self.fileSizeField.stringValue = FileSize.format(fileSize, unit: .b)
+        self.fileSizeField.stringValue = "\(FloatingPointByteCountFormatter.string(fromByteCount: fileSize))B"
 
         // track list
 
@@ -168,10 +171,10 @@ class InspectorWindowController: NSWindowController, NSTableViewDelegate, NSTabl
       }
 
       let vbitrate = controller.getInt(MPVProperty.videoBitrate)
-      self.vbitrateField.stringValue = FileSize.format(vbitrate, unit: .b) + "bps"
+      self.vbitrateField.stringValue = FloatingPointByteCountFormatter.string(fromByteCount: vbitrate) + "bps"
 
       let abitrate = controller.getInt(MPVProperty.audioBitrate)
-      self.abitrateField.stringValue = FileSize.format(abitrate, unit: .b) + "bps"
+      self.abitrateField.stringValue = FloatingPointByteCountFormatter.string(fromByteCount: abitrate) + "bps"
 
       let dynamicStrProperties: [String: NSTextField] = [
         MPVProperty.avsync: self.avsyncField,
@@ -259,7 +262,7 @@ class InspectorWindowController: NSWindowController, NSTableViewDelegate, NSTabl
   }
 
   @IBAction func addWatchAction(_ sender: AnyObject) {
-    let _ = Utility.quickPromptPanel("add_watch") { str in
+    Utility.quickPromptPanel("add_watch", sheetWindow: window) { str in
       self.watchProperties.append(str)
       self.watchTableView.reloadData()
       self.saveWatchList()

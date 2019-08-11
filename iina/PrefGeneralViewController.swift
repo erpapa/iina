@@ -13,15 +13,15 @@ import Sparkle
 class PrefGeneralViewController: PreferenceViewController, PreferenceWindowEmbeddable {
 
   override var nibName: NSNib.Name {
-    get {
-      return NSNib.Name("PrefGeneralViewController")
-    }
+    return NSNib.Name("PrefGeneralViewController")
   }
 
   var preferenceTabTitle: String {
-    get {
-      return NSLocalizedString("preference.general", comment: "General")
-    }
+    return NSLocalizedString("preference.general", comment: "General")
+  }
+
+  var preferenceTabImage: NSImage {
+    return NSImage(named: NSImage.Name("pref_general"))!
   }
 
   override var sectionViews: [NSView] {
@@ -36,7 +36,7 @@ class PrefGeneralViewController: PreferenceViewController, PreferenceWindowEmbed
   // MARK: - IBAction
 
   @IBAction func chooseScreenshotPathAction(_ sender: AnyObject) {
-    Utility.quickOpenPanel(title: "Choose screenshot save path", isDir: true) { url in
+    Utility.quickOpenPanel(title: "Choose screenshot save path", chooseDir: true, sheetWindow: view.window) { url in
       Preference.set(url.path, for: .screenshotFolder)
       UserDefaults.standard.synchronize()
     }

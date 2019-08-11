@@ -79,10 +79,13 @@ struct Preference {
     static let pauseWhenInactive = Key("pauseWhenInactive")
     static let playWhenEnteringFullScreen = Key("playWhenEnteringFullScreen")
     static let pauseWhenLeavingFullScreen = Key("pauseWhenLeavingFullScreen")
+    static let pauseWhenGoesToSleep = Key("pauseWhenGoesToSleep")
 
     /** Show chapter pos in progress bar (bool) */
     static let showChapterPos = Key("showChapterPos")
 
+    static let screenshotSaveToFile = Key("screenshotSaveToFile")
+    static let screenshotCopyToClipboard = Key("screenshotCopyToClipboard")
     static let screenshotFolder = Key("screenShotFolder")
     static let screenshotIncludeSubtitle = Key("screenShotIncludeSubtitle")
     static let screenshotFormat = Key("screenShotFormat")
@@ -124,10 +127,17 @@ struct Preference {
 
     static let enableThumbnailPreview = Key("enableThumbnailPreview")
     static let maxThumbnailPreviewCacheSize = Key("maxThumbnailPreviewCacheSize")
+    static let enableThumbnailForRemoteFiles = Key("enableThumbnailForRemoteFiles")
 
     static let autoSwitchToMusicMode = Key("autoSwitchToMusicMode")
+    static let musicModeShowPlaylist = Key("musicModeShowPlaylist")
+    static let musicModeShowAlbumArt = Key("musicModeShowAlbumArt")
 
     static let displayTimeAndBatteryInFullScreen = Key("displayTimeAndBatteryInFullScreen")
+    
+    static let windowBehaviorWhenPip = Key("windowBehaviorWhenPip")
+    static let pauseWhenPip = Key("pauseWhenPip")
+    static let togglePipByMinimizingWindow = Key("togglePipByMinimizingWindow")
 
     // Codec
 
@@ -244,6 +254,8 @@ struct Preference {
     static let enableLogging = Key("enableLogging")
     static let logLevel = Key("logLevel")
 
+    static let displayKeyBindingRawValues = Key("displayKeyBindingRawValues")
+
     /** unused */
     // static let resizeFrameBuffer = Key("resizeFrameBuffer")
 
@@ -291,13 +303,24 @@ struct Preference {
 
   enum Theme: Int, InitializingFromKey {
     case dark = 0
-    case ultraDark
-    case light
-    case mediumLight
+    case ultraDark // 1
+    case light // 2
+    case mediumLight // 3
+    case system // 4
 
     static var defaultValue = Theme.dark
 
     init?(key: Key) {
+      let value = Preference.integer(for: key)
+      if #available(macOS 10.14, *) {
+        if value == 1 || value == 3 {
+          return nil
+        }
+      } else {
+        if value == 4 {
+          return nil
+        }
+      }
       self.init(rawValue: Preference.integer(for: key))
     }
   }
@@ -575,6 +598,18 @@ struct Preference {
       }
     }
   }
+  
+  enum WindowBehaviorWhenPip: Int, InitializingFromKey {
+    case doNothing = 0
+    case hide
+    case minimize
+    
+    static var defaultValue = WindowBehaviorWhenPip.doNothing
+    
+    init?(key: Key) {
+      self.init(rawValue: Preference.integer(for: key))
+    }
+  }
 
   enum ToolBarButton: Int {
     case settings = 0
@@ -586,7 +621,7 @@ struct Preference {
 
     func image() -> NSImage {
       switch self {
-      case .settings: return NSImage(named: .actionTemplate)!
+      case .settings: return NSImage(named: NSImage.actionTemplateName)!
       case .playlist: return #imageLiteral(resourceName: "playlist")
       case .pip: return #imageLiteral(resourceName: "pip")
       case .fullScreen: return #imageLiteral(resourceName: "fullscreen")
@@ -646,6 +681,7 @@ struct Preference {
     .pauseWhenMinimized: false,
     .pauseWhenInactive: false,
     .pauseWhenLeavingFullScreen: false,
+    .pauseWhenGoesToSleep: true,
     .playWhenEnteringFullScreen: false,
 
     .playlistAutoAdd: true,
@@ -658,8 +694,15 @@ struct Preference {
     .showRemainingTime: false,
     .enableThumbnailPreview: true,
     .maxThumbnailPreviewCacheSize: 500,
+    .enableThumbnailForRemoteFiles: false,
     .autoSwitchToMusicMode: true,
+    .musicModeShowPlaylist: false,
+    .musicModeShowAlbumArt: true,
     .displayTimeAndBatteryInFullScreen: false,
+    
+    .windowBehaviorWhenPip: WindowBehaviorWhenPip.doNothing.rawValue,
+    .pauseWhenPip: false,
+    .togglePipByMinimizingWindow: false,
 
     .videoThreads: 0,
     .hardwareDecoder: HardwareDecoderOption.auto.rawValue,
@@ -724,6 +767,7 @@ struct Preference {
     .useMpvOsd: false,
     .enableLogging: false,
     .logLevel: Logger.Level.debug.rawValue,
+    .displayKeyBindingRawValues: false,
     .userOptions: [],
     .useUserDefinedConfDir: false,
     .userDefinedConfDir: "~/.config/mpv/",
@@ -743,6 +787,8 @@ struct Preference {
     .pinchAction: PinchAction.windowSize.rawValue,
     .forceTouchAction: MouseClickAction.none.rawValue,
 
+    .screenshotSaveToFile: true,
+    .screenshotCopyToClipboard: false,
     .screenshotFolder: "~/Pictures/Screenshots",
     .screenshotIncludeSubtitle: true,
     .screenshotFormat: ScreenshotFormat.png.rawValue,
@@ -832,12 +878,12 @@ struct Preference {
     ud.set(value, forKey: key.rawValue)
   }
 
-  static func set(_ value: Any, for key: Key) {
+  static func set(_ value: Any?, for key: Key) {
     ud.set(value, forKey: key.rawValue)
   }
 
   static func `enum`<T: InitializingFromKey>(for key: Key) -> T {
     return T.init(key: key) ?? T.defaultValue
   }
-  
+
 }

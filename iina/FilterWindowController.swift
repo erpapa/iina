@@ -8,7 +8,7 @@
 
 import Cocoa
 
-class FilterWindowController: NSWindowController {
+class FilterWindowController: NSWindowController, NSWindowDelegate {
 
   override var windowNibName: NSNib.Name {
     return NSNib.Name("FilterWindowController")
@@ -33,6 +33,7 @@ class FilterWindowController: NSWindowController {
   @IBOutlet weak var editFilterStringTextField: NSTextField!
   @IBOutlet weak var editFilterKeyRecordView: KeyRecordView!
   @IBOutlet weak var editFilterKeyRecordViewLabel: NSTextField!
+  @IBOutlet weak var removeButton: NSButton!
 
   var filterType: String!
 
@@ -45,6 +46,7 @@ class FilterWindowController: NSWindowController {
 
   override func windowDidLoad() {
     super.windowDidLoad()
+    window?.delegate = self
 
     // title
     window?.title = filterType == MPVProperty.af ? NSLocalizedString("filter.audio_filters", comment: "Audio Filters") : NSLocalizedString("filter.video_filters", comment: "Video Filters")
@@ -61,6 +63,8 @@ class FilterWindowController: NSWindowController {
 
     keyRecordView.delegate = self
     editFilterKeyRecordView.delegate = self
+
+    updateButtonStatus()
 
     // notifications
     let notiName: Notification.Name = filterType == MPVProperty.af ? .iinaAFChanged : .iinaVFChanged
@@ -96,20 +100,21 @@ class FilterWindowController: NSWindowController {
     NotificationCenter.default.removeObserver(self)
   }
 
-  func addFilter(_ filter: MPVFilter) {
+  func addFilter(_ filter: MPVFilter) -> Bool {
     if filterType == MPVProperty.vf {
       guard PlayerCore.active.addVideoFilter(filter) else {
-        Utility.showAlert("filter.incorrect")
-        return
+        Utility.showAlert("filter.incorrect", sheetWindow: window)
+        return false
       }
     } else {
       guard PlayerCore.active.addAudioFilter(filter) else {
-        Utility.showAlert("filter.incorrect")
-        return
+        Utility.showAlert("filter.incorrect", sheetWindow: window)
+        return false
       }
     }
     filters.append(filter)
     reloadTable()
+    return true
   }
 
   func saveFilter(_ filter: MPVFilter) {
@@ -143,6 +148,10 @@ class FilterWindowController: NSWindowController {
       if success {
         reloadTable()
         pc.sendOSD(.removeFilter)
+        // FIXME: For some reason, after removeFilterAction is called, tableViewSelectionDidChange(_:)
+        // for currentFiltersTableView is not called. This is a workaround to ensure
+        // tableViewSelectionDidChange(_:) is called.
+        currentFiltersTableView.deselectAll(self)
       }
     }
   }
@@ -219,9 +228,21 @@ extension FilterWindowController: NSTableViewDelegate, NSTableViewDataSource {
         filters[row] = newFilter
         setFilters()
       } else {
-        Utility.showAlert("filter.incorrect")
+        Utility.showAlert("filter.incorrect", sheetWindow: window)
       }
     }
+  }
+
+  func tableViewSelectionDidChange(_ notification: Notification) {
+    updateButtonStatus()
+  }
+
+  func windowDidBecomeKey(_ notification: Notification) {
+    updateButtonStatus()
+  }
+
+  private func updateButtonStatus() {
+    removeButton.isEnabled = currentFiltersTableView.selectedRow >= 0
   }
 
 }
@@ -278,7 +299,8 @@ class NewFilterSheetViewController: NSViewController, NSTableViewDelegate, NSTab
   @IBOutlet weak var filterWindow: FilterWindowController!
   @IBOutlet weak var tableView: NSTableView!
   @IBOutlet weak var scrollContentView: NSView!
-
+  @IBOutlet weak var addButton: NSButton!
+  
   private var currentPreset: FilterPreset?
   private var currentBindings: [String: NSControl] = [:]
   private var presets: [FilterPreset] = []
@@ -307,11 +329,18 @@ class NewFilterSheetViewController: NSViewController, NSTableViewDelegate, NSTab
     currentPreset = preset
     currentBindings.removeAll()
     scrollContentView.subviews.forEach { $0.removeFromSuperview() }
+    addButton.isEnabled = true
+
     var maxY: CGFloat = 0
     let generateInputs: (String, FilterParameter) -> Void = { (name, param) in
       self.scrollContentView.addSubview(self.quickLabel(yPos: maxY, title: preset.localizedParamName(name)))
       maxY += 21
       let input = self.quickInput(yPos: &maxY, param: param)
+      // For preventing crash due to adding a filter with no name:
+      if name == "name", preset.name.starts(with: "custom_"), let textField = input as? NSTextField {
+        textField.delegate = self
+        self.addButton.isEnabled = !textField.stringValue.isEmpty
+      }
       self.scrollContentView.addSubview(input)
       self.currentBindings[name] = input
     }
@@ -411,12 +440,22 @@ class NewFilterSheetViewController: NSViewController, NSTableViewDelegate, NSTab
       }
     }
     // create filter
-    filterWindow.addFilter(preset.transformer(instance))
-    PlayerCore.active.sendOSD(.addFilter(preset.localizedName))
+    if filterWindow.addFilter(preset.transformer(instance)) {
+      PlayerCore.active.sendOSD(.addFilter(preset.localizedName))
+    }
   }
 
   @IBAction func sheetCancelBtnAction(_ sender: Any) {
     filterWindow.window!.endSheet(filterWindow.newFilterSheet, returnCode: .cancel)
   }
 
+}
+
+/* For preventing crash due to to adding filter with no name */
+extension NewFilterSheetViewController: NSTextFieldDelegate {
+  func controlTextDidChange(_ obj: Notification) {
+    if let textField = obj.object as? NSTextField {
+      self.addButton.isEnabled = !textField.stringValue.isEmpty
+    }
+  }
 }

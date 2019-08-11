@@ -17,7 +17,7 @@ class MainMenuActionHandler: NSResponder {
     self.player = playerCore
     super.init()
   }
-  
+
   required init?(coder: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
@@ -27,7 +27,7 @@ class MainMenuActionHandler: NSResponder {
     inspector.showWindow(self)
     inspector.updateInfo()
   }
-  
+
   @objc func menuSavePlaylist(_ sender: NSMenuItem) {
     Utility.quickSavePanel(title: "Save to playlist", types: ["m3u8"]) { (url) in
       if url.isFileURL {
@@ -35,7 +35,7 @@ class MainMenuActionHandler: NSResponder {
         for item in self.player.info.playlist {
           playlist.append((item.filename + "\n"))
         }
-        
+
         do {
           try playlist.write(to: url, atomically: true, encoding: String.Encoding.utf8)
         } catch let error as NSError {
@@ -52,6 +52,18 @@ class MainMenuActionHandler: NSResponder {
       let index = player.mpv.getInt(MPVProperty.playlistPos)
       player.playlistRemove(index)
       try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+    } catch let error {
+      Utility.showAlert("playlist.error_deleting", arguments: [error.localizedDescription])
+    }
+  }
+
+  // currently only being used for key command
+  @objc func menuDeleteCurrentFileHard(_ sender: NSMenuItem) {
+    guard let url = player.info.currentURL else { return }
+    do {
+      let index = player.mpv.getInt(MPVProperty.playlistPos)
+      player.playlistRemove(index)
+      try FileManager.default.removeItem(at: url)
     } catch let error {
       Utility.showAlert("playlist.error_deleting", arguments: [error.localizedDescription])
     }
@@ -106,7 +118,7 @@ extension MainMenuActionHandler {
   }
 
   @objc func menuJumpTo(_ sender: NSMenuItem) {
-    let _ = Utility.quickPromptPanel("jump_to") { input in
+    Utility.quickPromptPanel("jump_to") { input in
       if let vt = VideoTime(input) {
         self.player.seek(absoluteSecond: Double(vt.second))
       }
@@ -158,11 +170,11 @@ extension MainMenuActionHandler {
   }
 
   @objc func menuNextChapter(_ sender: NSMenuItem) {
-    player.mpv.command(.add, args: ["chapter", "1"])
+    player.mpv.command(.add, args: ["chapter", "1"], checkError: false)
   }
 
   @objc func menuPreviousChapter(_ sender: NSMenuItem) {
-    player.mpv.command(.add, args: ["chapter", "-1"])
+    player.mpv.command(.add, args: ["chapter", "-1"], checkError: false)
   }
 }
 
@@ -226,7 +238,7 @@ extension MainMenuActionHandler {
   }
 
   @objc func menuToggleMute(_ sender: NSMenuItem) {
-    player.toogleMute()
+    player.toggleMute()
   }
 
   @objc func menuChangeAudioDelay(_ sender: NSMenuItem) {
@@ -247,7 +259,7 @@ extension MainMenuActionHandler {
 
 extension MainMenuActionHandler {
   @objc func menuLoadExternalSub(_ sender: NSMenuItem) {
-    Utility.quickOpenPanel(title: "Load external subtitle file", isDir: false) { url in
+    Utility.quickOpenPanel(title: "Load external subtitle file", chooseDir: false) { url in
       self.player.loadExternalSubFile(url, delay: true)
     }
   }

@@ -149,10 +149,9 @@ class OpenSubSupport {
         }
         // read password
         if let udUsername = Preference.string(for: .openSubUsername), !udUsername.isEmpty {
-          let (readResult, readPassword, _) = OpenSubSupport.findPassword(username: udUsername)
-          if readResult == errSecSuccess {
+          if let (_, readPassword) = try? KeychainAccess.read(username: udUsername, forService: .openSubAccount) {
             finalUser = udUsername
-            finalPw = readPassword!
+            finalPw = readPassword
           }
         }
       }
@@ -168,7 +167,7 @@ class OpenSubSupport {
           // check status
           let pStatus = parsed["status"] as! String
           if pStatus.hasPrefix("200") {
-            self.token = parsed["token"] as! String
+            self.token = parsed["token"] as? String
             Logger.log("OpenSub: logged in as user \(finalUser)", subsystem: subsystem)
             self.startHeartbeat()
             resolver.fulfill(())
@@ -229,7 +228,7 @@ class OpenSubSupport {
   func requestIMDB(_ fileURL: URL) -> Promise<String> {
     return Promise { resolver in
       let filename = fileURL.lastPathComponent
-      xmlRpc.call("GuessMovieFromString", [token, [filename]]) { status in
+      xmlRpc.call("GuessMovieFromString", [token as Any, [filename]]) { status in
         switch status {
         case .ok(let response):
           do {
@@ -255,7 +254,7 @@ class OpenSubSupport {
       let limit = 100
       var requestInfo = info
       requestInfo["sublanguageid"] = self.language
-      xmlRpc.call("SearchSubtitles", [token, [requestInfo], ["limit": limit]]) { status in
+      xmlRpc.call("SearchSubtitles", [token as Any, [requestInfo], ["limit": limit]]) { status in
         switch status {
         case .ok(let response):
           guard self.checkStatus(response) else { resolver.reject(OpenSubError.wrongResponseFormat); return }
@@ -264,7 +263,7 @@ class OpenSubSupport {
             return
           }
           var result: [OpenSubSubtitle] = []
-          for (index, subData) in pData!.enumerated() {
+          for (index, subData) in pData.enumerated() {
             let sub = OpenSubSubtitle(index: index,
                                       filename: subData["SubFileName"] as! String,
                                       langID: subData["SubLanguageID"] as! String,
@@ -313,66 +312,12 @@ class OpenSubSupport {
     }
   }
 
-  static func savePassword(username: String, passwd: String) -> OSStatus {
-    let service = OpenSubSupport.serviceName as NSString
-    let accountName = username as NSString
-    let pw = passwd as NSString
-    let pwData = pw.data(using: String.Encoding.utf8.rawValue)! as NSData
-
-    let status: OSStatus
-    // try read password
-    let (readResult, _, readItemRef) = findPassword(username: username)
-    if readResult == errSecSuccess {
-      // else, try modify the password
-      status = SecKeychainItemModifyContent(readItemRef!,
-                                            nil,
-                                            UInt32(pw.length),
-                                            pwData.bytes)
-    } else {
-      // if can't read, try add password
-      status = SecKeychainAddGenericPassword(nil,
-                                             UInt32(service.length),
-                                             service.utf8String,
-                                             UInt32(accountName.length),
-                                             accountName.utf8String,
-                                             UInt32(pw.length),
-                                             pwData.bytes,
-                                             nil)
-    }
-    return status
-  }
-
-  static func findPassword(username: String) -> (OSStatus, String?, SecKeychainItem?) {
-    let service = OpenSubSupport.serviceName as NSString
-    let accountName = username as NSString
-    var pwLength = UInt32()
-    var pwData: UnsafeMutableRawPointer? = nil
-    var itemRef: SecKeychainItem? = nil
-    let status = SecKeychainFindGenericPassword(nil,
-                                                UInt32(service.length),
-                                                service.utf8String,
-                                                UInt32(accountName.length),
-                                                accountName.utf8String,
-                                                &pwLength,
-                                                &pwData,
-                                                &itemRef)
-    var password: String? = ""
-    if status == errSecSuccess {
-      let data = Data(bytes: pwData!, count: Int(pwLength))
-      password = String(data: data, encoding: .utf8)
-    }
-    if pwData != nil {
-      SecKeychainItemFreeContent(nil, pwData)
-    }
-    return (status, password, itemRef)
-  }
-
   private func startHeartbeat() {
     heartBeatTimer = Timer(timeInterval: heartbeatInterval, target: self, selector: #selector(sendHeartbeat), userInfo: nil, repeats: true)
   }
 
   @objc private func sendHeartbeat() {
-    xmlRpc.call("NoOperation", [token]) { result in
+    xmlRpc.call("NoOperation", [token as Any]) { result in
       switch result {
       case .ok(let value):
         // 406 No session

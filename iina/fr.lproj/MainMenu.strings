@@ -4,7 +4,7 @@
 "0Cz-OE-85L.title" = "Délai des sous-titres +0.1s";
 
 /* Class = "NSMenuItem"; title = "Show Playlist Panel"; ObjectID = "0T7-Nu-SL7"; */
-"0T7-Nu-SL7.title" = "Panneau des playlists";
+"0T7-Nu-SL7.title" = "Afficher la playlist";
 
 /* Class = "NSMenuItem"; title = "Open URL…"; ObjectID = "0m7-3r-twH"; */
 "0m7-3r-twH.title" = "Ouvrir une adresse…";
@@ -79,7 +79,7 @@
 "8y7-Cy-lKT.title" = "Afficher les réglages rapides";
 
 /* Class = "NSMenuItem"; title = "Speed Up to 1.1x"; ObjectID = "91n-xW-L37"; */
-"91n-xW-L37.title" = "Accélérer jusqu'à 1.1x";
+"91n-xW-L37.title" = "Accélérer de 1.1x";
 
 /* Class = "NSMenuItem"; title = "Audio Delay - 0.1s"; ObjectID = "9ee-7i-xs7"; */
 "9ee-7i-xs7.title" = "Délai audio -0.1s";
@@ -124,7 +124,7 @@
 "DRb-Y8-xir.title" = "Piste audio";
 
 /* Class = "NSMenuItem"; title = "Speed Down to 0.9x"; ObjectID = "DUP-nm-BJt"; */
-"DUP-nm-BJt.title" = "Ralentir jusqu'à 0.9x";
+"DUP-nm-BJt.title" = "Ralentir de 0.9x";
 
 /* Class = "NSMenuItem"; title = "Close"; ObjectID = "DVo-aG-piG"; */
 "DVo-aG-piG.title" = "Fermer";
@@ -181,7 +181,7 @@
 "HyV-fh-RgO.title" = "Vidéo";
 
 /* Class = "NSMenuItem"; title = "Open…"; ObjectID = "IAo-SY-fd9"; */
-"IAo-SY-fd9.title" = "Ouvrir…";
+"IAo-SY-fd9.title" = "Ouvrir un fichier…";
 
 /* Class = "NSMenuItem"; title = "Audio Device"; ObjectID = "IXq-yq-uDF"; */
 "IXq-yq-uDF.title" = "Périphérique audio";
@@ -226,7 +226,7 @@
 "OIu-H0-Mht.title" = "Verticalement (pivot)";
 
 /* Class = "NSMenuItem"; title = "Minimize"; ObjectID = "OY7-WF-poV"; */
-"OY7-WF-poV.title" = "Réduire";
+"OY7-WF-poV.title" = "Placer dans le Dock";
 
 /* Class = "NSMenuItem"; title = "Hide IINA"; ObjectID = "Olw-nP-bQN"; */
 "Olw-nP-bQN.title" = "Masquer IINA";
@@ -247,7 +247,7 @@
 "Qv1-xd-wj5.title" = "Nouvelle fenêtre";
 
 /* Class = "NSMenuItem"; title = "Zoom"; ObjectID = "R4o-n2-Eq4"; */
-"R4o-n2-Eq4.title" = "Zoom";
+"R4o-n2-Eq4.title" = "Réduire/agrandir";
 
 /* Class = "NSMenuItem"; title = "Website"; ObjectID = "Rqg-VS-aIj"; */
 "Rqg-VS-aIj.title" = "Site internet";
@@ -322,7 +322,7 @@
 "bGN-E4-V5A.title" = "Mode musique";
 
 /* Class = "NSMenuItem"; title = "Open URL in New Window…"; ObjectID = "bfB-bn-KeM"; */
-"bfB-bn-KeM.title" = "Ouvrir l'URL dans une nouvelle fenêtre…";
+"bfB-bn-KeM.title" = "Ouvrir une adresse dans une nouvelle fenêtre…";
 
 /* Class = "NSMenu"; title = "File"; ObjectID = "bib-Uj-vzu"; */
 "bib-Uj-vzu.title" = "Fichier";
@@ -349,7 +349,7 @@
 "dMs-cI-mzQ.title" = "Fichier";
 
 /* Class = "NSMenuItem"; title = "Stop and Clear Playlists"; ObjectID = "deS-xK-iBb"; */
-"deS-xK-iBb.title" = "Arrêter et vider les playlists";
+"deS-xK-iBb.title" = "Arrêter et vider la playlist";
 
 /* Class = "NSMenu"; title = "Crop"; ObjectID = "eo2-Tt-SLx"; */
 "eo2-Tt-SLx.title" = "Rognage";
@@ -415,7 +415,7 @@
 "n90-to-nRT.title" = "Pivoter";
 
 /* Class = "NSMenuItem"; title = "Delete Current File"; ObjectID = "npH-8B-XA4"; */
-"npH-8B-XA4.title" = "Enlever le fichier actuel de la playlist";
+"npH-8B-XA4.title" = "Enlever le fichier en cours de la playlist";
 
 /* Class = "NSMenu"; title = "Open Recent"; ObjectID = "oas-Oc-fiZ"; */
 "oas-Oc-fiZ.title" = "Ouvrir l'élément récent";
@@ -499,7 +499,7 @@
 "yHI-7D-OaI.title" = "Désentrelacer";
 
 /* Class = "NSMenuItem"; title = "Open in New Window…"; ObjectID = "z9W-ga-j3b"; */
-"z9W-ga-j3b.title" = "Ouvrir dans une nouvelle fenêtre…";
+"z9W-ga-j3b.title" = "Ouvrir un fichier dans une nouvelle fenêtre…";
 
 /* Class = "NSMenuItem"; title = "Make Lower Case"; ObjectID = "zez-g5-2Pt"; */
 "zez-g5-2Pt.title" = "Mettre en minuscules";

@@ -16,15 +16,12 @@
 "alert.beta_channel.title" = "接受 beta 版本的更新";
 "alert.choose_media_file.title" = "选择媒体文件";
 "alert.clear_cache.message" = "确定清除所有缩略图缓存吗?";
-"alert.clear_cache.success" = "缓存已清除。";
 "alert.clear_cache.title" = "清除缩略图缓存";
 "alert.clear_history.message" = "确定删除所有播放历史吗？";
-"alert.clear_history.success" = "播放历史已删除。";
 "alert.clear_history.title" = "清除播放历史";
 "alert.clear_watch_later.message" = "确定清除所有保存的播放进度，即「watch later」数据吗？";
-"alert.clear_watch_later.success" = "已删除所有保存的播放进度。";
 "alert.clear_watch_later.title" = "清除保存的播放进度";
-"alert.config.cannot_create" = "无法创建配置文件！";
+"alert.config.cannot_create" = "无法创建配置文件！\n%@";
 "alert.config.cannot_write" = "无法写入配置文件！";
 "alert.config.duplicate.message" = "请输入复制后的配置文件名。";
 "alert.config.duplicate.title" = "复制快捷键配置";
@@ -94,6 +91,7 @@
 "keymapping.message" = "请按任意键来开始录制。";
 "keymapping.title" = "快捷键";
 "main.buffering_indicator" = "缓冲中... %d%%";
+"main.opening_stream" = "正在打开流……";
 "menu.audio_delay" = "音频延迟: %.2f秒";
 "menu.audio_delay_down" = "音频延迟 - %.1fs";
 "menu.audio_delay_up" = "音频延迟 + %.1fs";
@@ -138,6 +136,7 @@
 "osd.filter_added" = "已添加滤镜: %@";
 "osd.filter_removed" = "已删除滤镜";
 "osd.find_online_sub" = "查找在线字幕中...";
+"osd.find_online_sub.source" = "从";
 "osd.mute" = "静音";
 "osd.network_error" = "网络错误";
 "osd.pause" = "暂停";
@@ -178,11 +177,16 @@
 "pl_menu.reveal_in_finder" = "在 Finder 中显示";
 "pl_menu.title_multi" = "%d 个项目";
 "pl_menu.wrong_sub" = "错误的字幕!";
-"playlist.chapter_cap" = "章节";
-"playlist.playlist_cap" = "播放列表";
+"pl_menu.browser" = "在浏览器中打开";
+"pl_menu.copy_url" = "复制链接";
+"pl_menu.copy_url_multi" = "复制链接";
+"playlist.total_length" = "总计 %@";
+"playlist.total_length_with_selected" = "选中 %@ / %@";
 "preference.advanced" = "高级";
 "preference.control" = "控制";
 "preference.general" = "通用";
+"preference.key_binding_hint_1" = "若要编辑此配置文件，请先点击「复制…」按钮来创建一个副本。";
+"preference.key_binding_hint_2" = "双击右边的任意一行来编辑相应的快捷键。";
 "preference.keybindings" = "快捷键";
 "preference.logged_in_as" = "已登录 %@";
 "preference.network" = "网络";
@@ -213,4 +217,5 @@
 "touchbar.rewind" = "快退";
 "touchbar.seek" = "进度条";
 "touchbar.time" = "播放进度";
+"touchbar.toggle_pip" = "切换「画中画」模式";
 "track.none" = "<无>";

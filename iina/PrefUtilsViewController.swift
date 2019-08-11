@@ -18,11 +18,14 @@ class PrefUtilsViewController: PreferenceViewController, PreferenceWindowEmbedda
     return NSLocalizedString("preference.utilities", comment: "Utilities")
   }
 
+  var preferenceTabImage: NSImage {
+    return NSImage(named: NSImage.Name("pref_utils"))!
+  }
+
   override var sectionViews: [NSView] {
     return [sectionDefaultAppView, sectionClearCacheView, sectionBrowserExtView]
   }
 
-  @IBOutlet weak var searchField: NSSearchField!
   @IBOutlet var sectionDefaultAppView: NSView!
   @IBOutlet var sectionClearCacheView: NSView!
   @IBOutlet var sectionBrowserExtView: NSView!
@@ -31,6 +34,8 @@ class PrefUtilsViewController: PreferenceViewController, PreferenceWindowEmbedda
   @IBOutlet weak var setAsDefaultAudioCheckBox: NSButton!
   @IBOutlet weak var setAsDefaultPlaylistCheckBox: NSButton!
   @IBOutlet weak var thumbCacheSizeLabel: NSTextField!
+  @IBOutlet weak var savedPlaybackProgressClearedLabel: NSTextField!
+  @IBOutlet weak var playHistoryClearedLabel: NSTextField!
 
   override func viewDidLoad() {
     super.viewDidLoad()
@@ -41,7 +46,7 @@ class PrefUtilsViewController: PreferenceViewController, PreferenceWindowEmbedda
   }
 
   private func updateThumbnailCacheStat() {
-    thumbCacheSizeLabel.stringValue = FileSize.format(CacheManager.shared.getCacheSize(), unit: .b)
+    thumbCacheSizeLabel.stringValue = "\(FloatingPointByteCountFormatter.string(fromByteCount: CacheManager.shared.getCacheSize(), countStyle: .binary))B"
   }
 
   @IBAction func setIINAAsDefaultAction(_ sender: Any) {
@@ -92,7 +97,8 @@ class PrefUtilsViewController: PreferenceViewController, PreferenceWindowEmbedda
       }
     }
 
-    Utility.showAlert("set_default.success", arguments: [successCount, failedCount], style: .informational)
+    Utility.showAlert("set_default.success", arguments: [successCount, failedCount], style: .informational,
+                      sheetWindow: view.window)
     view.window!.endSheet(setAsDefaultSheet)
   }
 
@@ -101,35 +107,31 @@ class PrefUtilsViewController: PreferenceViewController, PreferenceWindowEmbedda
   }
 
   @IBAction func clearWatchLaterBtnAction(_ sender: Any) {
-    _ = Utility.quickAskPanel("clear_watch_later", useSheet: true) { confirmed in
-      guard confirmed else { return }
+    Utility.quickAskPanel("clear_watch_later", sheetWindow: view.window) { respond in
+      guard respond == .alertFirstButtonReturn else { return }
       try? FileManager.default.removeItem(atPath: Utility.watchLaterURL.path)
       Utility.createDirIfNotExist(url: Utility.watchLaterURL)
-      Utility.showAlert("clear_watch_later.success", style: .informational)
+      self.savedPlaybackProgressClearedLabel.isHidden = false
     }
   }
 
   @IBAction func clearHistoryBtnAction(_ sender: Any) {
-    _ = Utility.quickAskPanel("clear_history", useSheet: true) { confirmed in
-      guard confirmed else { return }
+    Utility.quickAskPanel("clear_history", sheetWindow: view.window) { respond in
+      guard respond == .alertFirstButtonReturn else { return }
       try? FileManager.default.removeItem(atPath: Utility.playbackHistoryURL.path)
       NSDocumentController.shared.clearRecentDocuments(self)
-      Utility.showAlert("clear_history.success", style: .informational)
+      Preference.set(nil, for: .iinaLastPlayedFilePath)
+      self.playHistoryClearedLabel.isHidden = false
     }
   }
 
   @IBAction func clearCacheBtnAction(_ sender: Any) {
-    _ = Utility.quickAskPanel("clear_cache", useSheet: true) { confirmed in
-      guard confirmed else { return }
+    Utility.quickAskPanel("clear_cache", sheetWindow: view.window) { respond in
+      guard respond == .alertFirstButtonReturn else { return }
       try? FileManager.default.removeItem(atPath: Utility.thumbnailCacheURL.path)
       Utility.createDirIfNotExist(url: Utility.thumbnailCacheURL)
       self.updateThumbnailCacheStat()
-      Utility.showAlert("clear_cache.success", style: .informational)
     }
-  }
-
-  @IBAction func extSafariBtnAction(_ sender: Any) {
-    NSWorkspace.shared.open(URL(string: AppData.safariExtensionLink)!)
   }
 
   @IBAction func extChromeBtnAction(_ sender: Any) {
@@ -137,5 +139,6 @@ class PrefUtilsViewController: PreferenceViewController, PreferenceWindowEmbedda
   }
 
   @IBAction func extFirefoxBtnAction(_ sender: Any) {
+    NSWorkspace.shared.open(URL(string: AppData.firefoxExtensionLink)!)
   }
 }

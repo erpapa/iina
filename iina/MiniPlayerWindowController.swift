@@ -34,7 +34,8 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
   private let observedPrefKeys: [Preference.Key] = [
     .showRemainingTime,
     .alwaysFloatOnTop,
-    .maxVolume
+    .maxVolume,
+    .themeMaterial
   ]
 
   override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
@@ -62,6 +63,11 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
         }
       }
 
+    case PK.themeMaterial.rawValue:
+      if let newValue = change[.newKey] as? Int {
+        setMaterial(Preference.Theme(rawValue: newValue))
+      }
+
     default:
       return
     }
@@ -84,9 +90,9 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
   @IBOutlet weak var playlistWrapperView: NSVisualEffectView!
   @IBOutlet weak var mediaInfoView: NSView!
   @IBOutlet weak var controlView: NSView!
-  @IBOutlet weak var titleLabel: NSTextField!
+  @IBOutlet weak var titleLabel: ScrollingTextField!
   @IBOutlet weak var titleLabelTopConstraint: NSLayoutConstraint!
-  @IBOutlet weak var artistAlbumLabel: NSTextField!
+  @IBOutlet weak var artistAlbumLabel: ScrollingTextField!
   @IBOutlet weak var playButton: NSButton!
   @IBOutlet weak var leftLabel: NSTextField!
   @IBOutlet weak var rightLabel: DurationDisplayTextField!
@@ -107,7 +113,7 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
     self.player = player
     super.init(window: nil)
   }
-  
+
   required init?(coder: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
@@ -125,16 +131,25 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
     window.initialFirstResponder = nil
     window.styleMask = [.fullSizeContentView, .titled, .resizable, .closable]
     window.isMovableByWindowBackground = true
-    window.appearance = NSAppearance(named: .vibrantDark)
     window.titlebarAppearsTransparent = true
     window.titleVisibility = .hidden
     ([.closeButton, .miniaturizeButton, .zoomButton, .documentIconButton] as [NSWindow.ButtonType]).forEach {
-      window.standardWindowButton($0)?.isHidden = true
+      let button = window.standardWindowButton($0)
+      button?.isHidden = true
+      // The close button, being obscured by standard buttons, won't respond to clicking when window is inactive.
+      // i.e. clicking close button (or any position located in the standard buttons's frame) will only order the window
+      // to front, but it never becomes key or main window.
+      // Removing the button directly will also work but it causes crash on 10.12-, so for the sake of safety we don't use that way for now.
+      // FIXME: Not a perfect solution. It should respond to the first click.
+      button?.frame.size = .zero
     }
 
     setToInitialWindowSize(display: false, animate: false)
-    
+
     controlViewTopConstraint.isActive = false
+
+    // set material
+    setMaterial(Preference.enum(for: .themeMaterial))
 
     // tracking area
     let trackingView = NSView()
@@ -147,11 +162,6 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
     ])
     trackingView.addTrackingArea(NSTrackingArea(rect: trackingView.bounds, options: [.activeAlways, .inVisibleRect, .mouseEnteredAndExited], owner: self, userInfo: nil))
 
-    backgroundView.state = .active
-    [backgroundView, playlistWrapperView].forEach { view in
-      view?.material = .ultraDark
-    }
-
     // default album art
     defaultAlbumArt.isHidden = false
     defaultAlbumArt.wantsLayer = true
@@ -161,7 +171,7 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
     closeButtonVE.action = #selector(self.close)
     closeButtonBox.action = #selector(self.close)
     closeButtonView.alphaValue = 0
-    closeButtonBackgroundViewVE.layer?.cornerRadius = 8
+    closeButtonBackgroundViewVE.roundCorners(withRadius: 8)
     closeButtonBackgroundViewBox.isHidden = true
 
     // switching UI
@@ -256,7 +266,10 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
       closeButtonView.animator().alphaValue = 0
       controlView.animator().alphaValue = 0
       mediaInfoView.animator().alphaValue = 1
-    }, completionHandler: {})
+    }, completionHandler: {
+      self.titleLabel.scroll()
+      self.artistAlbumLabel.scroll()
+    })
   }
 
   override func mouseEntered(with event: NSEvent) {
@@ -290,6 +303,28 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
   func windowDidResize(_ notification: Notification) {
     guard let window = window, !window.inLiveResize else { return }
     self.player.mainWindow.videoView.videoLayer.draw()
+  }
+
+  func windowDidBecomeMain(_ notification: Notification) {
+    titleLabel.scroll()
+    artistAlbumLabel.scroll()
+  }
+
+  private func setMaterial(_ theme: Preference.Theme?) {
+    guard let window = window, let theme = theme else { return }
+
+    if #available(macOS 10.14, *) {
+      window.appearance = NSAppearance(iinaTheme: theme)
+    } else {
+      let (appearance, material) = Utility.getAppearanceAndMaterial(from: theme)
+
+      [backgroundView, closeButtonBackgroundViewVE, playlistWrapperView].forEach {
+        $0?.appearance = appearance
+        $0?.material = material
+      }
+
+      window.appearance = appearance
+    }
   }
 
   // MARK: - NSPopoverDelegate
@@ -342,6 +377,8 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
           self.artistAlbumLabel.stringValue = "\(mediaArtist) - \(mediaAlbum)"
         }
       }
+      self.titleLabel.scroll()
+      self.artistAlbumLabel.scroll()
     }
   }
 
@@ -350,6 +387,7 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
     volumeSlider.doubleValue = player.info.volume
     volumeLabel.intValue = Int32(player.info.volume)
     muteButton.state = player.info.isMuted ? .on : .off
+    volumeButton.image = player.info.isMuted ? NSImage(named: "mute") : NSImage(named: "volume")
   }
 
   func updateVideoSize() {
@@ -361,6 +399,7 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
     let newHeight = videoView.frame.width / aspect
     updateVideoViewAspectConstraint(withAspect: aspect)
     // resize window
+    guard isVideoVisible else { return }
     var frame = window.frame
     frame.size.height += newHeight - currentHeight - 0.5
     window.setFrame(frame, display: true, animate: false)
@@ -399,9 +438,10 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
       newFrame.size.height += DefaultPlaylistHeight
       window.setFrame(newFrame, display: true, animate: true)
     }
+    Preference.set(isPlaylistVisible, for: .musicModeShowPlaylist)
   }
 
-  @IBAction func toogleVideoView(_ sender: Any) {
+  @IBAction func toggleVideoView(_ sender: Any) {
     guard let window = window else { return }
     isVideoVisible = !isVideoVisible
     videoWrapperViewBottomConstraint.isActive = isVideoVisible
@@ -418,6 +458,7 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
       frame.size.height -= videoViewHeight
       window.setFrame(frame, display: true, animate: false)
     }
+    Preference.set(isVideoVisible, for: .musicModeShowAlbumArt)
   }
 
   @IBAction func volumeSliderChanges(_ sender: NSSlider) {
@@ -425,7 +466,6 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
   }
 
   @IBAction func backBtnAction(_ sender: NSButton) {
-    window?.orderOut(self)
     player.switchBackFromMiniPlayer(automatically: false)
   }
 
@@ -454,7 +494,7 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
   }
 
   @IBAction func muteBtnAction(_ sender: NSButton) {
-    player.toogleMute()
+    player.toggleMute()
   }
 
   @IBAction func playSliderChanges(_ sender: NSSlider) {
@@ -473,7 +513,7 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
       window.level = .normal
     }
   }
-  
+
   private func normalWindowHeight() -> CGFloat {
     return 72 + (isVideoVisible ? videoWrapperView.frame.height : 0)
   }

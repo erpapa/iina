@@ -25,9 +25,11 @@ class PrefUIViewController: PreferenceViewController, PreferenceWindowEmbeddable
   }
 
   var preferenceTabTitle: String {
-    get {
-      return NSLocalizedString("preference.ui", comment: "UI")
-    }
+    return NSLocalizedString("preference.ui", comment: "UI")
+  }
+
+  var preferenceTabImage: NSImage {
+    return NSImage(named: NSImage.Name("pref_ui"))!
   }
 
   static var oscToolbarButtons: [Preference.ToolBarButton] {
@@ -37,7 +39,7 @@ class PrefUIViewController: PreferenceViewController, PreferenceWindowEmbeddable
   }
 
   override var sectionViews: [NSView] {
-    return [sectionAppearanceView, sectionWindowView, sectionOSCView, sectionOSDView, sectionThumbnailView]
+    return [sectionAppearanceView, sectionWindowView, sectionOSCView, sectionOSDView, sectionThumbnailView, sectionPictureInPictureView]
   }
 
   private let toolbarSettingsSheetController = PrefOSCToolbarSettingsSheetController()
@@ -47,7 +49,9 @@ class PrefUIViewController: PreferenceViewController, PreferenceWindowEmbeddable
   @IBOutlet var sectionOSCView: NSView!
   @IBOutlet var sectionOSDView: NSView!
   @IBOutlet var sectionThumbnailView: NSView!
-
+  @IBOutlet var sectionPictureInPictureView: NSView!
+    
+  @IBOutlet weak var themeMenu: NSMenu!
   @IBOutlet weak var oscPreviewImageView: NSImageView!
   @IBOutlet weak var oscPositionPopupButton: NSPopUpButton!
   @IBOutlet weak var oscToolbarStackView: NSStackView!
@@ -69,21 +73,35 @@ class PrefUIViewController: PreferenceViewController, PreferenceWindowEmbeddable
   @IBOutlet weak var windowResizeAlwaysButton: NSButton!
   @IBOutlet weak var windowResizeOnlyWhenOpenButton: NSButton!
   @IBOutlet weak var windowResizeNeverButton: NSButton!
-
-
+  
+  @IBOutlet weak var pipDoNothing: NSButton!
+  @IBOutlet weak var pipHideWindow: NSButton!
+  @IBOutlet weak var pipMinimizeWindow: NSButton!
+  
   override func viewDidLoad() {
     super.viewDidLoad()
     oscPositionPopupBtnAction(oscPositionPopupButton)
     oscToolbarStackView.wantsLayer = true
-    oscToolbarStackView.layer?.backgroundColor = NSColor(calibratedWhite: 0.5, alpha: 0.2).cgColor
-    oscToolbarStackView.layer?.cornerRadius = 4
     updateOSCToolbarButtons()
     setupGeometryRelatedControls()
     setupResizingRelatedControls()
+    setupPipBehaviorRelatedControls()
+
+    let removeThemeMenuItemWithTag = { (tag: Int) in
+      if let item = self.themeMenu.item(withTag: tag) {
+        self.themeMenu.removeItem(item)
+      }
+    }
+    if #available(macOS 10.14, *) {
+      removeThemeMenuItemWithTag(Preference.Theme.mediumLight.rawValue)
+      removeThemeMenuItemWithTag(Preference.Theme.ultraDark.rawValue)
+    } else {
+      removeThemeMenuItemWithTag(Preference.Theme.system.rawValue)
+    }
   }
 
   @IBAction func oscPositionPopupBtnAction(_ sender: NSPopUpButton) {
-    var name: String
+    var name: NSImage.Name
     switch sender.selectedTag() {
     case 0:
       name = "osc_float"
@@ -94,7 +112,7 @@ class PrefUIViewController: PreferenceViewController, PreferenceWindowEmbeddable
     default:
       name = "osc_float"
     }
-    oscPreviewImageView.image = NSImage(named: NSImage.Name(rawValue: name))
+    oscPreviewImageView.image = NSImage(named: name)
   }
 
   @IBAction func updateGeometryValue(_ sender: AnyObject) {
@@ -125,6 +143,10 @@ class PrefUIViewController: PreferenceViewController, PreferenceWindowEmbeddable
 
   @IBAction func setupResizingRelatedControls(_ sender: NSButton) {
     Preference.set(sender.tag, for: .resizeWindowTiming)
+  }
+
+  @IBAction func setupPipBehaviorRelatedControls(_ sender: NSButton) {
+    Preference.set(sender.tag, for: .windowBehaviorWhenPip)
   }
 
   @IBAction func customizeOSCToolbarAction(_ sender: Any) {
@@ -202,6 +224,12 @@ class PrefUIViewController: PreferenceViewController, PreferenceWindowEmbeddable
     let resizeOption = Preference.enum(for: .resizeWindowTiming) as Preference.ResizeWindowTiming
     ([windowResizeNeverButton, windowResizeOnlyWhenOpenButton, windowResizeAlwaysButton] as [NSButton])
       .first { $0.tag == resizeOption.rawValue }?.state = .on
+  }
+
+  private func setupPipBehaviorRelatedControls() {
+    let pipBehaviorOption = Preference.enum(for: .windowBehaviorWhenPip) as Preference.WindowBehaviorWhenPip
+    ([pipDoNothing, pipHideWindow, pipMinimizeWindow] as [NSButton])
+        .first { $0.tag == pipBehaviorOption.rawValue }?.state = .on
   }
 
   private func setSubViews(of view: NSBox, enabled: Bool) {

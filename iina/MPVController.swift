@@ -37,6 +37,7 @@ protocol MPVEventDelegate {
 class MPVController: NSObject {
   // The mpv_handle
   var mpv: OpaquePointer!
+  var mpvRenderContext: OpaquePointer?
 
   var mpvClientName: UnsafePointer<CChar>!
   var mpvVersion: String!
@@ -53,13 +54,17 @@ class MPVController: NSObject {
 
   var fileLoaded: Bool = false
 
+  private var hooks: [UInt64: () -> Void] = [:]
+  private var hookCounter: UInt64 = 1
+
   let observeProperties: [String: mpv_format] = [
-    MPVProperty.trackListCount: MPV_FORMAT_INT64,
+    MPVProperty.trackList: MPV_FORMAT_NONE,
     MPVProperty.vf: MPV_FORMAT_NONE,
     MPVProperty.af: MPV_FORMAT_NONE,
     MPVOption.TrackSelection.vid: MPV_FORMAT_INT64,
     MPVOption.TrackSelection.aid: MPV_FORMAT_INT64,
     MPVOption.TrackSelection.sid: MPV_FORMAT_INT64,
+    MPVOption.Subtitles.secondarySid: MPV_FORMAT_INT64,
     MPVOption.PlaybackControl.pause: MPV_FORMAT_FLAG,
     MPVProperty.chapter: MPV_FORMAT_INT64,
     MPVOption.Video.deinterlace: MPV_FORMAT_FLAG,
@@ -327,19 +332,48 @@ class MPVController: NSObject {
 
     // Set options that can be override by user's config. mpv will log user config when initialize,
     // so we put them here.
-    chkErr(mpv_set_property_string(mpv, MPVOption.Video.vo, "opengl-cb"))
+    chkErr(mpv_set_property_string(mpv, MPVOption.Video.vo, "libmpv"))
     chkErr(mpv_set_property_string(mpv, MPVOption.Window.keepaspect, "no"))
-    chkErr(mpv_set_property_string(mpv, MPVOption.Video.openglHwdecInterop, "auto"))
+    chkErr(mpv_set_property_string(mpv, MPVOption.Video.gpuHwdecInterop, "auto"))
 
     // get version
     mpvVersion = getString(MPVProperty.mpvVersion)
   }
 
-  func mpvInitCB() -> UnsafeMutableRawPointer {
-    // Get opengl-cb context.
-    let mpvGL = mpv_get_sub_api(mpv, MPV_SUB_API_OPENGL_CB)!;
+  func mpvInitRendering() {
+    guard let mpv = mpv else {
+      fatalError("mpvInitRendering() should be called after mpv handle being initialized!")
+    }
+    let apiType = UnsafeMutableRawPointer(mutating: (MPV_RENDER_API_TYPE_OPENGL as NSString).utf8String)
+    var openGLInitParams = mpv_opengl_init_params(get_proc_address: mpvGetOpenGLFunc,
+                                                  get_proc_address_ctx: nil,
+                                                  extra_exts: nil)
+    var advanced: CInt = 1
+    var params = [
+      mpv_render_param(type: MPV_RENDER_PARAM_API_TYPE, data: apiType),
+      mpv_render_param(type: MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, data: &openGLInitParams),
+      mpv_render_param(type: MPV_RENDER_PARAM_ADVANCED_CONTROL, data: &advanced),
+      mpv_render_param()
+    ]
+    mpv_render_context_create(&mpvRenderContext, mpv, &params)
+    mpv_render_context_set_update_callback(mpvRenderContext!, mpvUpdateCallback, mutableRawPointerOf(obj: player.mainWindow.videoView.videoLayer))
+  }
 
-    return mpvGL
+  func mpvUninitRendering() {
+    guard let mpvRenderContext = mpvRenderContext else { return }
+    mpv_render_context_set_update_callback(mpvRenderContext, nil, nil)
+    mpv_render_context_free(mpvRenderContext)
+  }
+
+  func mpvReportSwap() {
+    guard let mpvRenderContext = mpvRenderContext else { return }
+    mpv_render_context_report_swap(mpvRenderContext)
+  }
+
+  func shouldRenderUpdateFrame() -> Bool {
+    guard let mpvRenderContext = mpvRenderContext else { return false }
+    let flags: UInt64 = mpv_render_context_update(mpvRenderContext)
+    return flags & UInt64(MPV_RENDER_UPDATE_FRAME.rawValue) > 0
   }
 
   // Basically send quit to mpv
@@ -432,6 +466,31 @@ class MPVController: NSObject {
     return str
   }
 
+  func getScreenshot(_ arg: String) -> NSImage {
+    var args = try! MPVNode.create(["screenshot-raw", arg])
+    defer {
+      MPVNode.free(args)
+    }
+    var result = mpv_node()
+    mpv_command_node(self.mpv, &args, &result)
+    let rawImage = try! MPVNode.parse(result) as! [String: Any]
+    mpv_free_node_contents(&result)
+    var pixelArray = rawImage["data"] as! [UInt8]
+    // According to mpv's client.h, the pixel array mpv returns arrange
+    // color data as "B8G8R8X8", whereas CGImages's data provider needs
+    // RGBA, so swap each pixel at index 0 and 2.
+    for i in 0 ..< pixelArray.count >> 2 {
+      pixelArray.swapAt(i << 2, i << 2 | 2)
+    }
+    let width = Int(truncatingIfNeeded: rawImage["w"] as! Int64)
+    let height = Int(truncatingIfNeeded: rawImage["h"] as! Int64)
+    let rgbColorSpace = CGColorSpaceCreateDeviceRGB()
+    let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
+    let providerRef = CGDataProvider(data: NSData(bytes: pixelArray, length: pixelArray.count))!
+    let cgImage = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 4 * 8, bytesPerRow: width * 4, space: rgbColorSpace, bitmapInfo: bitmapInfo, provider: providerRef, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
+    return NSImage(cgImage: cgImage!, size: NSSize(width: width, height: height))
+  }
+
   /** Get filter. only "af" or "vf" is supported for name */
   func getFilters(_ name: String) -> [MPVFilter] {
     Logger.ensure(name == MPVProperty.vf || name == MPVProperty.af, "getFilters() do not support \(name)!")
@@ -473,6 +532,14 @@ class MPVController: NSObject {
     return parsed!
   }
 
+  // MARK: - Hooks
+
+  func addHook(_ name: MPVHook, priority: Int32 = 0, hook: @escaping () -> Void) {
+    mpv_hook_add(mpv, hookCounter, name.rawValue, priority)
+    hooks[hookCounter] = hook
+    hookCounter += 1
+  }
+
   // MARK: - Events
 
   // Read event and handle it async
@@ -499,7 +566,7 @@ class MPVController: NSObject {
       if quitByMPV {
         NSApp.terminate(nil)
       } else {
-        mpv_detach_destroy(mpv)
+        mpv_destroy(mpv)
         mpv = nil
       }
 
@@ -510,6 +577,15 @@ class MPVController: NSObject {
       let level = String(cString: (msg?.pointee.level)!)
       let text = String(cString: (msg?.pointee.text)!)
       Logger.log("mpv log: [\(prefix)] \(level): \(text)", level: .warning, subsystem: .general, appendNewlineAtTheEnd: false)
+
+    case MPV_EVENT_HOOK:
+      let userData = event.pointee.reply_userdata
+      let hookEvent = event.pointee.data.bindMemory(to: mpv_event_hook.self, capacity: 1).pointee
+      let hookID = hookEvent.id
+      if let hook = hooks[userData] {
+        hook()
+      }
+      mpv_hook_continue(mpv, hookID)
 
     case MPV_EVENT_PROPERTY_CHANGE:
       let dataOpaquePtr = OpaquePointer(event.pointee.data)
@@ -560,8 +636,11 @@ class MPVController: NSObject {
     case MPV_EVENT_END_FILE:
       // if receive end-file when loading file, might be error
       // wait for idle
+      let reason = event!.pointee.data.load(as: mpv_end_file_reason.self)
       if player.info.fileLoading {
-        receivedEndFileWhileLoading = true
+        if reason != MPV_END_FILE_REASON_STOP {
+          receivedEndFileWhileLoading = true
+        }
       } else {
         player.info.shouldAutoLoadFiles = false
       }
@@ -644,39 +723,36 @@ class MPVController: NSObject {
 
   private func handlePropertyChange(_ name: String, _ property: mpv_event_property) {
 
-    DispatchQueue.main.async {
-      self.player.mainWindow.quickSettingView.reload()
-    }
+    var needReloadQuickSettingsView = false
 
     switch name {
 
     case MPVProperty.videoParams:
+      needReloadQuickSettingsView = true
       onVideoParamsChange(UnsafePointer<mpv_node_list>(OpaquePointer(property.data)))
 
     case MPVOption.TrackSelection.vid:
-      let data = getInt(MPVOption.TrackSelection.vid)
-      player.info.vid = Int(data)
-      player.getTrackInfo()
-      let currTrack = player.info.currentTrack(.video) ?? .noneVideoTrack
-      player.sendOSD(.track(currTrack))
+      player.info.vid = Int(getInt(MPVOption.TrackSelection.vid))
+      player.postNotification(.iinaVIDChanged)
+      player.sendOSD(.track(player.info.currentTrack(.video) ?? .noneVideoTrack))
 
     case MPVOption.TrackSelection.aid:
-      let data = getInt(MPVOption.TrackSelection.aid)
-      player.info.aid = Int(data)
-      player.getTrackInfo()
-      let currTrack = player.info.currentTrack(.audio) ?? .noneAudioTrack
+      player.info.aid = Int(getInt(MPVOption.TrackSelection.aid))
       DispatchQueue.main.sync {
         player.mainWindow?.muteButton.isEnabled = (player.info.aid != 0)
         player.mainWindow?.volumeSlider.isEnabled = (player.info.aid != 0)
       }
-      player.sendOSD(.track(currTrack))
+      player.postNotification(.iinaAIDChanged)
+      player.sendOSD(.track(player.info.currentTrack(.audio) ?? .noneAudioTrack))
 
     case MPVOption.TrackSelection.sid:
-      let data = getInt(MPVOption.TrackSelection.sid)
-      player.info.sid = Int(data)
-      player.getTrackInfo()
-      let currTrack = player.info.currentTrack(.sub) ?? .noneSubTrack
-      player.sendOSD(.track(currTrack))
+      player.info.sid = Int(getInt(MPVOption.TrackSelection.sid))
+      player.postNotification(.iinaSIDChanged)
+      player.sendOSD(.track(player.info.currentTrack(.sub) ?? .noneSubTrack))
+
+    case MPVOption.Subtitles.secondarySid:
+      player.info.secondSid = Int(getInt(MPVOption.Subtitles.secondarySid))
+      player.postNotification(.iinaSIDChanged)
 
     case MPVOption.PlaybackControl.pause:
       if let data = UnsafePointer<Bool>(OpaquePointer(property.data))?.pointee {
@@ -695,16 +771,20 @@ class MPVController: NSObject {
       player.syncUI(.playButton)
 
     case MPVProperty.chapter:
+      player.info.chapter = Int(getInt(MPVProperty.chapter))
       player.syncUI(.time)
       player.syncUI(.chapterList)
+      player.postNotification(.iinaMediaTitleChanged)
 
     case MPVOption.PlaybackControl.speed:
+      needReloadQuickSettingsView = true
       if let data = UnsafePointer<Double>(OpaquePointer(property.data))?.pointee {
         player.info.playSpeed = data
         player.sendOSD(.speed(data))
       }
 
     case MPVOption.Video.deinterlace:
+      needReloadQuickSettingsView = true
       if let data = UnsafePointer<Bool>(OpaquePointer(property.data))?.pointee {
         // this property will fire a change event at file start
         if player.info.deinterlace != data {
@@ -728,18 +808,21 @@ class MPVController: NSObject {
       }
 
     case MPVOption.Audio.audioDelay:
+      needReloadQuickSettingsView = true
       if let data = UnsafePointer<Double>(OpaquePointer(property.data))?.pointee {
         player.info.audioDelay = data
         player.sendOSD(.audioDelay(data))
       }
 
     case MPVOption.Subtitles.subDelay:
+      needReloadQuickSettingsView = true
       if let data = UnsafePointer<Double>(OpaquePointer(property.data))?.pointee {
         player.info.subDelay = data
         player.sendOSD(.subDelay(data))
       }
 
     case MPVOption.Subtitles.subScale:
+      needReloadQuickSettingsView = true
       if let data = UnsafePointer<Double>(OpaquePointer(property.data))?.pointee {
         let displayValue = data >= 1 ? data : -1/data
         let truncated = round(displayValue * 100) / 100
@@ -747,11 +830,13 @@ class MPVController: NSObject {
       }
 
     case MPVOption.Subtitles.subPos:
+      needReloadQuickSettingsView = true
       if let data = UnsafePointer<Double>(OpaquePointer(property.data))?.pointee {
         player.sendOSD(.subPos(data))
       }
 
     case MPVOption.Equalizer.contrast:
+      needReloadQuickSettingsView = true
       if let data = UnsafePointer<Int64>(OpaquePointer(property.data))?.pointee {
         let intData = Int(data)
         player.info.contrast = intData
@@ -759,6 +844,7 @@ class MPVController: NSObject {
       }
 
     case MPVOption.Equalizer.hue:
+      needReloadQuickSettingsView = true
       if let data = UnsafePointer<Int64>(OpaquePointer(property.data))?.pointee {
         let intData = Int(data)
         player.info.hue = intData
@@ -766,6 +852,7 @@ class MPVController: NSObject {
       }
 
     case MPVOption.Equalizer.brightness:
+      needReloadQuickSettingsView = true
       if let data = UnsafePointer<Int64>(OpaquePointer(property.data))?.pointee {
         let intData = Int(data)
         player.info.brightness = intData
@@ -773,6 +860,7 @@ class MPVController: NSObject {
       }
 
     case MPVOption.Equalizer.gamma:
+      needReloadQuickSettingsView = true
       if let data = UnsafePointer<Int64>(OpaquePointer(property.data))?.pointee {
         let intData = Int(data)
         player.info.gamma = intData
@@ -780,6 +868,7 @@ class MPVController: NSObject {
       }
 
     case MPVOption.Equalizer.saturation:
+      needReloadQuickSettingsView = true
       if let data = UnsafePointer<Int64>(OpaquePointer(property.data))?.pointee {
         let intData = Int(data)
         player.info.saturation = intData
@@ -791,11 +880,12 @@ class MPVController: NSObject {
     case MPVProperty.playlistCount:
       player.postNotification(.iinaPlaylistChanged)
 
-    case MPVProperty.trackListCount:
+    case MPVProperty.trackList:
       player.trackListChanged()
       player.postNotification(.iinaTracklistChanged)
 
     case MPVProperty.vf:
+      needReloadQuickSettingsView = true
       player.postNotification(.iinaVFChanged)
 
     case MPVProperty.af:
@@ -804,10 +894,8 @@ class MPVController: NSObject {
     case MPVOption.Window.fullscreen:
       guard player.mainWindow.isWindowLoaded else { break }
       let fs = getFlag(MPVOption.Window.fullscreen)
-      if fs != player.mainWindow.isInFullScreen {
-        DispatchQueue.main.async {
-          self.player.mainWindow.toggleWindowFullScreen()
-        }
+      if fs != player.mainWindow.fsState.isFullscreen {
+        DispatchQueue.main.async(execute: self.player.mainWindow.toggleWindowFullScreen)
       }
 
     case MPVOption.Window.ontop:
@@ -835,6 +923,12 @@ class MPVController: NSObject {
     default:
       // Utility.log("MPV property changed (unhandled): \(name)")
       break
+    }
+
+    if (needReloadQuickSettingsView) {
+      DispatchQueue.main.async {
+        self.player.mainWindow.quickSettingView.reload()
+      }
     }
   }
 
@@ -975,6 +1069,21 @@ class MPVController: NSObject {
       Logger.fatal("mpv API error: \"\(String(cString: mpv_error_string(status)))\", Return value: \(status!).")
     }
   }
+}
 
+fileprivate func mpvGetOpenGLFunc(_ ctx: UnsafeMutableRawPointer?, _ name: UnsafePointer<Int8>?) -> UnsafeMutableRawPointer? {
+  let symbolName: CFString = CFStringCreateWithCString(kCFAllocatorDefault, name, kCFStringEncodingASCII);
+  guard let addr = CFBundleGetFunctionPointerForName(CFBundleGetBundleWithIdentifier(CFStringCreateCopy(kCFAllocatorDefault, "com.apple.opengl" as CFString)), symbolName) else {
+    Logger.fatal("Cannot get OpenGL function pointer!")
+  }
+  return addr
+}
 
+fileprivate func mpvUpdateCallback(_ ctx: UnsafeMutableRawPointer?) {
+  let layer = bridge(ptr: ctx!) as ViewLayer
+  guard !layer.blocked else { return }
+
+  layer.mpvGLQueue.async {
+    layer.draw()
+  }
 }

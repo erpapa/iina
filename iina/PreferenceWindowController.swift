@@ -29,6 +29,7 @@ fileprivate extension NSView {
 
 protocol PreferenceWindowEmbeddable where Self: NSViewController {
   var preferenceTabTitle: String { get }
+  var preferenceTabImage: NSImage { get }
   var preferenceContentIsScrollable: Bool { get }
 }
 
@@ -151,6 +152,7 @@ class PreferenceWindowController: NSWindowController {
     super.windowDidLoad()
 
     window?.titlebarAppearsTransparent = true
+    window?.titleVisibility = .hidden
     window?.isMovableByWindowBackground = true
 
     tableView.delegate = self
@@ -285,7 +287,7 @@ class PreferenceWindowController: NSWindowController {
     }
     let title = (sectionTitleLabel as! NSTextField).stringValue
     var labels = findLabels(in: section)
-    labels.remove(at: labels.index(of: title)!)
+    labels.remove(at: labels.firstIndex(of: title)!)
     return (title, labels)
   }
 
@@ -349,7 +351,10 @@ extension PreferenceWindowController: NSTableViewDelegate, NSTableViewDataSource
 
   func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
     if tableView == self.tableView {
-      return viewControllers[at: row]?.preferenceTabTitle
+      return [
+        "image": viewControllers[at: row]?.preferenceTabImage,
+        "title": viewControllers[at: row]?.preferenceTabTitle
+      ] as [String: Any?]
     } else {
       guard let result = currentCompletionResults[at: row] else { return nil }
       let noLabel = result.strippedLabel == nil
@@ -384,10 +389,10 @@ class PrefSearchResultMaskView: NSView {
   var maskRect: NSRect?
 
   override static func defaultAnimation(forKey key: NSAnimatablePropertyKey) -> Any? {
-    if key.rawValue == "alphaValue" {
+    if key == "alphaValue" {
       let kfa = CAKeyframeAnimation(keyPath: "alphaValue")
       kfa.duration = 1.5
-      kfa.timingFunctions = [CAMediaTimingFunction(name: kCAMediaTimingFunctionDefault), CAMediaTimingFunction(name: kCAMediaTimingFunctionLinear)]
+      kfa.timingFunctions = [CAMediaTimingFunction(name: .default), CAMediaTimingFunction(name: .linear)]
       kfa.values = [1, 1, 0]
       kfa.keyTimes = [0, 0.75, 1.5]
       return kfa
@@ -402,9 +407,13 @@ class PrefSearchResultMaskView: NSView {
     let framePath = NSBezierPath(rect: bounds)
     let maskPath =  NSBezierPath(roundedRect: maskRect, xRadius: 6, yRadius: 6)
     framePath.append(maskPath)
-    framePath.windingRule = .evenOddWindingRule
+    framePath.windingRule = .evenOdd
     framePath.setClip()
-    NSColor(calibratedWhite: 0.5, alpha: 0.5).setFill()
+    if #available(macOS 10.14, *) {
+      NSColor.windowBackgroundColor.withSystemEffect(.pressed).setFill()
+    } else {
+      NSColor(calibratedWhite: 0.5, alpha: 0.5).setFill()
+    }
     dirtyRect.fill()
     NSGraphicsContext.restoreGraphicsState()
   }
